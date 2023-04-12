@@ -277,14 +277,380 @@ end) "category"  from patient pa join person pe on pe.personid = pa.patientid;
 
 
 -- ============================ Problem Statement 5 ==============================================================================================
+-- Problem Statement 1: 
+-- Johansson is trying to prepare a report on patients who have gone through treatments more than once. Help Johansson prepare a report
+-- that shows the patient's name, the number of treatments they have undergone, and their age, Sort the data in a way that the patients
+--  who have undergone more treatments appear on top.
+select pe.personID, pe.personName, count(tr.treatmentID) as total_treatment
+from person pe join patient pa on pe.personID=pa.patientID join treatment tr on tr.patientID=pa.patientID
+group by pe.personID having count(tr.treatmentID)>1
+order by total_treatment desc  ; 
+
+-- Problem Statement 2:Bharat is researching the impact of gender on different diseases, He wants to analyze if a certain disease is more 
+-- likely to infect a certain gender or not. Help Bharat analyze this by creating a report showing for every disease how many 
+-- males and females underwent treatment for each in the year 2021. It would also be helpful for Bharat if the male-to-female ratio is also shown.
+
+SELECT t.diseaseID, d.diseaseName,
+       SUM(CASE WHEN pe.gender = 'male' THEN 1 ELSE 0 END) AS male_count,
+       SUM(CASE WHEN pe.gender = 'female' THEN 1 ELSE 0 END) AS female_count,
+       (SUM(CASE WHEN pe.gender = 'male' THEN 1 ELSE 0 END) / 
+        SUM(CASE WHEN pe.gender = 'female' THEN 1 ELSE 0 END)) AS male_to_female_ratio
+FROM treatment t join patient p on t.patientID=p.patientID join person pe on pe.personID=p.patientID join disease d on t.diseaseID=d.diseaseID
+where year(t.date)=2021 GROUP BY t.diseaseID ORDER BY male_to_female_ratio DESC;
+
+
+-- Problem Statement 3:  
+-- Kelly, from the Fortis Hospital management, has requested a report that shows for each disease, the top 3 cities that had 
+-- the most number treatment for that disease. Generate a report for Kelly’s requirement.
+with cte as(
+select t.diseaseID,diseaseName,city, count(treatmentID) as total_treatment, 
+dense_rank() over (partition by t.diseaseID order by count(treatmentID) desc)as ranking 
+from  treatment t join patient p on t.patientID=p.patientID 
+			join person pe on pe.personID=p.patientID 
+            join disease d on t.diseaseID=d.diseaseID
+            join address ad on pe.addressID=ad.addressID
+group by t.diseaseID,city order by count(treatmentID) desc)
+select diseaseName,city,total_treatment from cte where ranking<=3;
+
+-- Problem Statement 4: 
+-- Brooke is trying to figure out if patients with a particular disease are preferring some pharmacies over others or not,
+-- For this purpose, she has requested a detailed pharmacy report that shows each pharmacy name, and how many prescriptions
+-- they have prescribed for each disease in 2021 and 2022, She expects the number of prescriptions prescribed in 2021 and 2022 be displayed
+-- in two separate columns.
+-- Write a query for Brooke’s requirement.
+
+select tr.diseaseID,di.diseaseName,pharmacyID,count(pe.personID) from disease di 
+	join treatment tr on di.diseaseID=tr.diseaseID 
+    join patient pa on tr.patientID=pa.patientID 
+    join person pe on pe.personID=pa.patientID
+    join prescription pr on pr.treatmentID=tr.treatmentID
+    where year(tr.date) in (2021,2022)
+    group by tr.diseaseID,pharmacyID order by 1,2 ,3 desc;
+
+
+
+-- Problem Statement 5:  
+-- Walde, from Rock tower insurance, has sent a requirement for a report that presents which insurance company is targeting the patients 
+-- of which state the most. Write a query for Walde that fulfills the requirement of Walde.
+-- Note: We can assume that insurance company is targeting region more if the patients of that region are claiming more insurance of that company.
+
+select ic.companyname, ad.state, count(tr.claimid) from address ad  
+join insurancecompany ic on ad.addressid = ic.addressid
+join insuranceplan ip on ic.companyid = ip.companyid
+join claim cl on ip.uin = cl.uin
+join treatment tr on tr.claimid = cl.claimid 
+group by ic.companyname, ad.state;
 
 -- ============================ Problem Statement 6 ==============================================================================================
+-- Problem Statement 1:The healthcare department wants a pharmacy report on the percentage of hospital-exclusive medicine prescribed 
+-- in the year 2022. Assist the healthcare department to view for each pharmacy, the pharmacy id, pharmacy name, total quantity of medicine
+-- prescribed in 2022, total quantity of hospital-exclusive medicine prescribed by the pharmacy in 2022, and the percentage of 
+-- hospital-exclusive medicine to the total medicine prescribed in 2022. Order the result in descending order of the percentage found. 
+
+select ph.pharmacyID,ph.pharmacyName,
+	SUM(CASE WHEN hospitalExclusive= 'S' THEN quantity ELSE 0 END) AS total_Hospital_exclusice,
+       SUM(CASE WHEN hospitalExclusive='N' THEN quantity ELSE quantity END) AS total,
+       (SUM(CASE WHEN hospitalExclusive= 'S' THEN quantity ELSE 0 END)/
+       SUM(CASE WHEN hospitalExclusive='N' THEN quantity ELSE quantity END)*100) as percentage
+	from pharmacy ph 
+	join prescription pr on ph.pharmacyID=pr.pharmacyID
+    join contain ct on ct.prescriptionID=pr.prescriptionID
+    join medicine me on me.medicineID=ct.medicineID
+    join treatment tr on tr.treatmentID=pr.treatmentID
+where year(tr.date) in (2022)
+group by ph.pharmacyID order by percentage desc;
+
+-- Problem Statement 2:  
+-- Sarah, from the healthcare department, has noticed many people do not claim insurance for their treatment. She has requested a state-wise
+-- report of the percentage of treatments that took place without claiming insurance. Assist Sarah by creating a report as per her requirement.
+
+select ad.state, count(tr.treatmentid) treatment_count, count(tr.claimid) claim_count,  
+100 - (count(tr.claimid)/count(tr.treatmentid))*100 percentage_not_claim
+from address ad 
+join person pe on ad.addressid = pe.addressid
+join patient pa on pe.personID=pa.patientID
+join treatment tr on tr.patientid = pa.patientID
+group by ad.state;
+
+-- Problem Statement 3:  
+-- Sarah, from the healthcare department, is trying to understand if some diseases are spreading in a particular region. 
+-- Assist Sarah by creating a report which shows for each state, the number of the most and least treated diseases by the patients of that state
+--  in the year 2022. 
+	with cte as(
+	select state,diseaseName, total_treatment,dense_rank() over(partition by state order by total_treatment desc ) as ranking1, dense_rank() over(partition by state order by total_treatment ) as ranking2 from
+    (select state,diseaseName, count( tr.treatmentID) as total_treatment
+	from address ad 
+	join person pe on ad.addressID=pe.addressID
+    join patient pa on pa.patientID=pe.personID
+    join treatment tr on tr.patientID=pa.patientID
+    join disease di on tr.diseaseID=di.diseaseID
+    where year(tr.date)=2022
+    group by state,tr.diseaseID) sub )
+    select state, diseaseName , 
+    (case when ranking1=1 then "max_treatment" 
+		  when ranking2=1 then "min_treatment" end)as status from cte where ranking1=1 or ranking2=1 order by state,diseaseName;
+-- Problem Statement 4: 
+-- Manish, from the healthcare department, wants to know how many registered people are registered as patients as well, in each city.
+-- Generate a report that shows each city that has 10 or more registered people belonging to it and the number of patients from that city
+--  as well as the percentage of the patient with respect to the registered people.
+
+select ad.city, count(pa.patientid) patient_count, count(pa.patientid)/(select count(*) from patient)*100 percentage 
+from address ad inner join person pe on pe.addressid = ad.addressid
+left join patient pa on pa.patientid = pe.personid group by city having count(pa.patientid) >=10;
+
+-- Problem Statement 5:  
+-- It is suspected by healthcare research department that the substance “ranitidine” might be causing some side effects. 
+-- Find the top 3 companies using the substance in their medicine so that they can be informed about it.
+
+select companyname, count(medicineid) as total_medicine from medicine 
+where substancename like "%ranitidina%" group by companyname order by 2 desc limit 3;
 
 -- ============================ Problem Statement 7 ==============================================================================================
+-- Problem Statement 1:Insurance companies want to know if a disease is claimed higher or lower than average.  
+-- Write a stored procedure that returns “claimed higher than average” or “claimed lower than average” when the diseaseID is passed to it. 
+-- Hint: Find average number of insurance claims for all the diseases.  If the number of claims for the passed disease is higher than 
+-- the average return “claimed higher than average” otherwise “claimed lower than average”.
+
+delimiter $$
+drop procedure if exists disease_claim;
+create procedure disease_claim (disid int)
+begin
+declare v1 int;
+declare v2 int;
+select avg(total_claim) average into v1 from
+( select di.diseasename, count(tr.claimid) total_claim from treatment tr  
+join disease di on di.diseaseid = tr.diseaseid group by di.diseasename ) a;
+select count(claimid) into v2 from treatment where diseaseid = disid;
+if v2 > v1 then 	select "claimed higher than average";
+else select "claimed lower than average";
+end if;
+end $$
+delimiter ;
+call disease_claim(40);
+call disease_claim(30);
+
+
+-- Problem Statement 2:  
+-- Joseph from Healthcare department has requested for an application which helps him get genderwise report for any disease. 
+-- Write a stored procedure when passed a disease_id returns 4 columns, disease_name, number_of_male_treated, number_of_female_treated, 
+-- more_treated_genderWhere, more_treated_gender is either ‘male’ or ‘female’ based on which gender underwent more often for the disease, 
+-- if the number is same for both the genders, the value should be ‘same’.
+
+delimiter $$
+drop procedure if exists disease_report;
+create procedure disease_report(disid int)
+begin
+with cte as (SELECT t.diseaseID, d.diseaseName,
+       SUM(CASE WHEN pe.gender = 'male' THEN 1 ELSE 0 END) AS male_count,
+       SUM(CASE WHEN pe.gender = 'female' THEN 1 ELSE 0 END) AS female_count,
+       (SUM(CASE WHEN pe.gender = 'male' THEN 1 ELSE 0 END) -
+		SUM(CASE WHEN pe.gender = 'female' THEN 1 ELSE 0 END)) AS difference_treatment_count
+FROM treatment t join patient p on t.patientID=p.patientID join person pe on pe.personID=p.patientID join disease d on t.diseaseID=d.diseaseID
+where t.diseaseId=disid
+GROUP BY t.diseaseID ORDER BY difference_treatment_count DESC) 
+select diseaseId,diseaseName,male_count,female_count, 
+(case when male_count>female_count then "Male"
+	  when male_count<female_count then "Female"
+      when male_count=female_count then "Same" 
+end) as Max_claimed from cte;
+
+end $$
+Delimiter ;
+call disease_report(35);
+call disease_report(40);
+
+
+-- Problem Statement 3:  
+-- The insurance companies want a report on the claims of different insurance plans. 
+-- Write a query that finds the top 3 most and top 3 least claimed insurance plans.
+-- The query is expected to return the insurance plan name,  insurance company name which has that plan and whether the plan is the 
+-- most claimed or least claimed. 
+with top3 as
+(
+select ic.companyname, ip.planname, count(tr.claimid) total_claim from insurancecompany ic 
+join insuranceplan ip on ic.companyid = ip.companyid
+join claim cl on ip.uin = cl.uin
+join treatment tr on tr.claimid = cl.claimid
+group by ic.companyname, ip.planname
+)
+(select companyname, planname, "mostclaimed", total_claim from top3 order by total_claim desc limit 3)
+union
+(select companyname, planname, "leastclaimed", total_claim from top3 order by total_claim asc limit 3);
+
+
+
+
+-- Problem Statement 4: 
+-- The healthcare department wants to know which category of patients is being affected the most by each disease.Assist the department 
+-- in creating a report regarding this.Provided the healthcare department has categorized the patients into the following category.
+-- YoungMale: Born on or after 1st Jan  2005  and gender male.
+-- YoungFemale: Born on or after 1st Jan  2005  and gender female.
+-- AdultMale: Born before 1st Jan 2005 but on or after 1st Jan 1985 and gender male.
+-- AdultFemale: Born before 1st Jan 2005 but on or after 1st Jan 1985 and gender female.
+-- MidAgeMale: Born before 1st Jan 1985 but on or after 1st Jan 1970 and gender male.
+-- MidAgeFemale: Born before 1st Jan 1985 but on or after 1st Jan 1970 and gender female.
+-- ElderMale: Born before 1st Jan 1970, and gender male.
+-- ElderFemale: Born before 1st Jan 1970, and gender female.
+with cte as (select * ,dense_rank() over(partition by diseaseName order by total_patient desc ) ranking from  (
+select di.diseasename, (case when pa.dob < "1970-01-01" and pe.gender = "male" then "eldermale"
+							  when pa.dob < "1970-01-01" and pe.gender = "female" then "elderfemale"
+							  when pa.dob < "1985-01-01" and pe.gender = "male" then "midagemale"
+							  when pa.dob < "1985-01-01" and pe.gender = "female" then "midagefemale"
+							  when pa.dob < "2005-01-01" and pe.gender = "male" then "adultmale"
+							  when pa.dob < "2005-01-01" and pe.gender = "female" then "adultfemale"
+							  when pa.dob >= "2005-01-01" and pe.gender = "male" then "youngmale"
+							  when pa.dob >= "2005-01-01" and pe.gender = "female" then "youngfemale" 
+							  end) category, count(tr.patientid) total_patient
+                              from patient pa 
+join person pe on pe.personid = pa.patientid
+join treatment tr on tr.patientid = pa.patientid
+join disease di on di.diseaseid = tr.diseaseid 
+group by diseaseName,category )sub )
+select diseaseName, category as max_claimed_category,total_patient from cte where ranking=1 ;
+
+
+-- Problem Statement 5:  
+-- Anna wants a report on the pricing of the medicine. She wants a list of the most expensive and most affordable medicines only. 
+-- Assist anna by creating a report of all the medicines which are pricey and affordable, listing the companyName, productName, description,
+-- maxPrice, and the price category of each. Sort the list in descending order of the maxPrice.
+-- Note: A medicine is considered to be “pricey” if the max price exceeds 1000 and “affordable” if the price is under 5. Write a query to find
+ 
+select * from 
+(select companyname, productname, maxprice, 
+(case when maxprice>1000 then "pricey"
+	  when maxprice<5 then "affordable"
+end) price_category from medicine order by maxprice desc) a where price_category is not null;
+
 
 -- ============================ Problem Statement 8 ==============================================================================================
+-- The healthcare department attempting to use the resources more efficiently. It already has some queries that are being used for different purposes. The management suspects that these queries might not be efficient so they have requested to optimize the existing queries wherever necessary.
+-- Given are some queries written in SQL server which may be optimized if necessary.
+
+-- Query 1: 
+-- For each age(in years), how many patients have gone for treatment?
+SELECT year(curdate())-year(dob)as age, count(distinct treatmentID) AS num_Treatments
+FROM person pe 
+JOIN Patient pa ON pa.patientID = pe.personID
+JOIN Treatment tr ON tr.patientID = pa.patientID
+group by year(curdate())-year(dob)
+order by numTreatments desc;
+
+
+-- Query 2: 
+-- For each city, Find the number of registered people, number of pharmacies, and number of insurance companies.
+
+
+select ad.city,count(distinct pe.personID) as registered_patient ,
+count(distinct  ph.pharmacyID) as total_Pharmacy, 
+count(distinct ic.companyID) as Total_insurance_companies
+from Address ad 
+left join Pharmacy ph on ph.addressID = ad.addressID 
+left join person pe on ad.addressId=pe.addressId
+left join insurancecompany ic on ad.addressID=ic.addressID
+group by city
+order by count(ph.pharmacyID) desc;
+
+-- Query 3: 
+-- Total quantity of medicine for each prescription prescribed by Ally Scripts
+-- If the total quantity of medicine is less than 20 tag it as "Low Quantity".
+-- If the total quantity of medicine is from 20 to 49 (both numbers including) tag it as "Medium Quantity".
+-- If the quantity is more than equal to 50 then tag it as "High quantity".
+
+select 
+pr.prescriptionID, sum(quantity) as totalQuantity,
+CASE WHEN sum(quantity) < 20 THEN 'Low Quantity' 
+	WHEN sum(quantity) < 50 THEN 'Medium Quantity'
+	ELSE 'High Quantity' END AS Tag
+FROM Contain c JOIN Prescription pr on pr.prescriptionID = c.prescriptionID
+JOIN Pharmacy ph on ph.pharmacyID = pr.pharmacyID 
+where ph.pharmacyName = 'Ally Scripts'
+group by c.prescriptionID;
+
+-- Query 4: 
+-- The total quantity of medicine in a prescription is the sum of the quantity of all the medicines in the prescription.
+-- Select the prescriptions for which the total quantity of medicine exceeds
+-- the avg of the total quantity of medicines for all the prescriptions.
+
+with cte as  
+(select ph.pharmacyID, pr.prescriptionID, sum(quantity) as totalQuantity
+from Pharmacy ph
+join Prescription pr on ph.pharmacyID = pr.pharmacyID
+join Contain c on c.prescriptionID = pr.prescriptionID
+join Medicine m on m.medicineID = c.medicineID
+join Treatment tr on tr.treatmentID = pr.treatmentID
+group by ph.pharmacyID, pr.prescriptionID
+order by ph.pharmacyID, pr.prescriptionID) 
+select * from cte
+where totalQuantity > (select avg(totalQuantity) from cte);
+
+
+-- Query 5: 
+-- Select every disease that has 'p' in its name, and 
+-- the number of times an insurance claim was made for each of them. 
+
+SELECT d.diseaseName, COUNT(*) as num_Claims
+FROM Disease d
+JOIN Treatment t ON d.diseaseID = t.diseaseID
+JOIN Claim c On t.claimID = c.claimID
+WHERE diseaseName like "%p%"
+GROUP BY diseaseName;
 
 -- ============================ Problem Statement 9 ==============================================================================================
+
+-- Problem Statement 1: 
+-- Brian, the healthcare department, has requested for a report that shows for each state how many people underwent treatment for 
+-- the disease “Autism”.  He expects the report to show the data for each state as well as each gender and for each state and gender combination. 
+-- Prepare a report for Brian for his requirement.
+
+select state,diseaseName,gender,count(tr.treatmentID) as total_treatment from disease d
+left join treatment tr on tr.diseaseID=d.diseaseID
+left join patient pa on pa.patientID=tr.patientID
+left join person pe on pe.personID=pa.patientID
+left join address ad on ad.addressID=pe.addressID
+where diseaseName="Autism"
+group by state,diseaseName,gender
+order by state,diseaseName;
+
+-- Problem Statement 2:  
+-- Insurance companies want to evaluate the performance of different insurance plans they offer. 
+-- Generate a report that shows each insurance plan, the company that issues the plan, and the number of treatments the plan was claimed for.
+-- The report would be more relevant if the data compares the performance for different years(2020, 2021 and 2022) and if the report also 
+-- includes the total number of claims in the different years, as well as the total number of claims for each plan in all 3 years combined.
+
+select companyName,planName ,year(tr.date) as year_treatment,count( c.claimId) 
+from insurancecompany ic 
+join insuranceplan ip on ic.companyID=ip.companyID 
+join claim c on c.uin=ip.uin
+join treatment tr on tr.claimID=c.claimID
+group by companyName,planName,year(tr.date)
+order by companyName,planName,year_treatment;
+
+select companyName,planName , 
+from insurancecompany ic 
+join insuranceplan ip on ic.companyID=ip.companyID 
+join claim c on c.uin=ip.uin
+join treatment tr on tr.claimID=c.claimID
+group by companyName,planName,year(tr.date)
+PIVOT
+(AVG(MARKS) FOR SUBJECTS IN (DBMS,NETWORKING, 
+GRAPHICS, CHEMISTRY, MATHEMATICS)) AS PivotTable;
+
+-- Problem Statement 3:  
+-- Sarah, from the healthcare department, is trying to understand if some diseases are spreading in a particular region. Assist Sarah by
+-- creating a report which shows each state the number of the most and least treated diseases by the patients of that state in the year 2022.
+-- It would be helpful for Sarah if the aggregation for the different combinations is found as well. Assist Sarah to create this report. 
+
+-- Problem Statement 4: 
+-- Jackson has requested a detailed pharmacy report that shows each pharmacy name, and how many prescriptions they have prescribed for 
+-- each disease in the year 2022, along with this Jackson also needs to view how many prescriptions were prescribed by each pharmacy,
+-- and the total number prescriptions were prescribed for each disease.
+-- Assist Jackson to create this report. 
+
+-- Problem Statement 5:  
+-- Praveen has requested for a report that finds for every disease how many males and females underwent treatment for each in the year 2022.
+-- It would be helpful for Praveen if the aggregation for the different combinations is found as well.
+-- Assist Praveen to create this report. 
+
 
 -- ============================ Problem Statement 10 ==============================================================================================
 
