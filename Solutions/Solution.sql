@@ -95,7 +95,8 @@ with cte as (
 	select i.planName, d.diseaseID, d.diseaseName, count(c.claimID)as  total_claim ,dense_rank() over(partition by d.diseaseID order by count(c.claimID) desc) as ranking1,dense_rank() over(partition by d.diseaseID order by count(c.claimID) ) as ranking2
 	from  insuranceplan i join claim c on i.uin=c.uin join treatment t on t.claimID=c.claimID join disease d on d.diseaseID=t.diseaseID
 	group by i.planName,d.diseaseID )
-select planName,diseaseId, diseaseName,total_claim  from cte where ranking1=1 or ranking2=1; 
+select planName,diseaseId, diseaseName,total_claim  from cte where ranking1=1 or ranking2=1
+order by diseaseID, total_claim desc; 
 
 
 
@@ -674,7 +675,8 @@ group by di.diseasename, pe.gender with rollup;
 -- the number of treatments the plan was claimed for, and the name of the disease the plan was claimed for the most.
 -- The plans which are claimed more are expected to appear above the plans that are claimed less.
 Delimiter //
-create procedure company_plans (name varchar(50))
+drop procedure if exists company_plans;
+create procedure company_plans (id int)
 begin
 select ic.companyName,ip.planName,diseaseName,count(distinct tr.treatmentID) as total_treatment
 from insurancecompany ic 
@@ -682,12 +684,12 @@ join insuranceplan ip on ic.companyID=ip.companyID
 join claim c on c.uin=ip.uin 
 join treatment tr on tr.claimID=c.claimID
 join disease d on d.diseaseID=tr.diseaseID
-where companyName=name
+where ic.companyId=id
 group by companyName,planName,diseaseName
-order by companyName, planName, diseaseName;
+order by companyName, planName, total_treatment desc;
 end //
 Delimiter ;
-call company_plans("Star Health and Allied Insurrance Co. Ltd.");
+call company_plans(112.18);
 
 -- Problem Statement 2:
 -- It was reported by some unverified sources that some pharmacies are more popular for certain diseases.
@@ -815,3 +817,74 @@ SET SQL_SAFE_UPDATES = 0;
 
 
 -- ============================ Problem Statement 11 ==============================================================================================
+-- Problem Statement 1:
+-- Patients are complaining that it is often difficult to find some medicines. They move from pharmacy to pharmacy to get the required medicine.
+-- A system is required that finds the pharmacies and their contact number that have the required medicine in their inventory.
+-- So that the patients can contact the pharmacy and order the required medicine.
+-- Create a stored procedure that can fix the issue.
+delimiter $$
+drop procedure if exists find_medicine;
+create procedure find_medicine (medname varchar(174))
+begin 
+select ph.pharmacyname, ph.pharmacyid from keep ke inner join pharmacy ph on ph.pharmacyid = ke.pharmacyid 
+where ke.medicineid in (select medicineid from medicine where productname like concat("%", medname, "%"));
+end $$
+delimiter ;
+
+call find_medicine("ostenan");
+
+-- Problem Statement 2:
+-- The pharmacies are trying to estimate the average cost of all the prescribed medicines per prescription, for all the prescriptions
+-- they have prescribed in a particular year. Create a stored function that will return the required value when the pharmacyID and year
+-- are passed to it. Test the function with multiple values.
+
+select avg(avg_price) as total_average_price from (select ph.pharmacyID ,pr.prescriptionID ,avg(maxPrice*quantity) as avg_price
+from pharmacy ph join prescription pr on ph.pharmacyID=pr.pharmacyID 
+ join contain c on c.prescriptionID=pr.prescriptionID
+ join medicine m on c.medicineID=m.medicineID
+ join treatment tr on tr.treatmentID=pr.treatmentID 
+where ph.pharmacyID=id and year(tr.date) in (year_input)
+group by ph.pharmacyID,pr.prescriptionID) sub;
+
+drop function if exists average_prescreption_bill;
+delimiter $$
+create function average_prescreption_bill(phid int, year1 varchar(5))
+returns numeric(20,5) deterministic
+begin
+declare v1 numeric;
+select averageprice into v1 from
+(
+select prescriptionid, pharmacyid, avg(totalprice)"averageprice", year from
+(
+select co.prescriptionid, pr.pharmacyid, co.quantity*(select maxprice from medicine where medicineid = co.medicineid) "totalprice", (select year(date) from treatment where treatmentid = (select treatmentid from prescription where prescriptionid = co.prescriptionid)) "year"
+from contain co inner join medicine me on co.medicineid = me.medicineid
+inner join prescription pr on pr.prescriptionid = co.prescriptionid
+inner join treatment tr on tr.treatmentid = pr.treatmentid order by 1
+) a group by pharmacyid, year order by 2
+) b where pharmacyid = phid and year = year1;
+return v1;
+end $$
+delimiter ;
+
+
+
+
+
+-- Problem Statement 3:
+-- The healthcare department has requested an application that finds out the disease that was spread the most in a state for a given year.
+-- So that they can use the information to compare the historical data and gain some insight.
+-- Create a stored function that returns the name of the disease for which the patients from a particular state had the
+-- most number of treatments for a particular year. Provided the name of the state and year is passed to the stored function.
+
+
+-- Problem Statement 4:
+-- The representative of the pharma union, Aubrey, has requested a system that she can use to find how many people in a specific city
+-- have been treated for a specific disease in a specific year. Create a stored function for this purpose.
+
+
+
+-- Problem Statement 5:
+-- The representative of the pharma union, Aubrey, is trying to audit different aspects of the pharmacies. She has requested a system
+-- that can be used to find the average balance for claims submitted by a specific insurance company in the year 2022. 
+-- Create a stored function that can be used in the requested application. 
+
