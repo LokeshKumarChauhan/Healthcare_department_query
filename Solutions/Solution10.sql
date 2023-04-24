@@ -21,7 +21,7 @@ group by companyName,planName,diseaseName
 order by companyName, planName, total_treatment desc;
 end //
 Delimiter ;
-call company_plans(112.18);
+call company_plans(1118);
 
 -- Problem Statement 2:
 -- It was reported by some unverified sources that some pharmacies are more popular for certain diseases.

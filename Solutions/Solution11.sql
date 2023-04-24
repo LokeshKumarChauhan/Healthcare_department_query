@@ -41,6 +41,7 @@ return v1;
 end $$
 delimiter ;
 
+select  average_prescreption_bill(1118,2021);
 
 
 
